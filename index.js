@@ -24,8 +24,9 @@ bluebird.longStackTraces()
 console.log('File System path: ' + argv.dirname)
 const NODE_ENV = process.env.NODE_ENV || 'development'
 const PORT = process.env.PORT || 8000
+const TCP_PORT = process.env.TCP_PORT || 8001
+let clientSocketList = []
 const ROOT_DIR = argv.dirname ? path.resolve(argv.dirname) : path.resolve(process.cwd())
-const CLIENT_PORT = 8099
 const OPERATION_CREATE = 'create'
 const OPERATION_UPDATE = 'update'
 const OPERATION_DELETE = 'delete'
@@ -35,7 +36,7 @@ if (NODE_ENV === 'development') {
   app.use(morgan('dev'))
 }
 
-app.listen(PORT, ()=> console.log(`Listening @ http://127.0.0.1:${PORT}`))
+app.listen(PORT, ()=> console.log(`HTTP Server Listening @ http://127.0.0.1:${PORT}`))
 
 function setFileAttributes(req, res, next){
   let filePath = path.resolve(path.join(ROOT_DIR, req.url))
@@ -81,33 +82,33 @@ function setDirDetails(req, res, next){
 }
 
 async function notifyClients(req, res, next){
-  // Read the contents of the file
-  let contents = null
-  console.log('Notify Clients: ' + req.operation)
-  // Get the file contents if the operation is PUT/POST
-  if (req.operation!== OPERATION_DELETE) {
-    await fs.promise.readFile(req.filePath, 'utf-8')
-    .then((fileContent) => {
-      contents = fileContent
-      console.log('Contents: ' + contents)
-    })
-  }
+  for (let i = 0; i < clientSocketList.length; i++) {
+    // Read the contents of the file
+    let contents = null
+    console.log('Notify Clients: ' + req.operation)
+    // Get the file contents if the operation is PUT/POST
+    if (req.operation!== OPERATION_DELETE) {
+      await fs.promise.readFile(req.filePath, 'utf-8')
+      .then((fileContent) => {
+        contents = fileContent
+        console.log('Contents: ' + contents)
+      })
+    }
 
-  let fileType = req.isDir ? 'dir' : 'file'
-  let data = {
+    let fileType = req.isDir ? 'dir' : 'file'
+    let data = {
       'action': req.operation,
       'path': req.filePath,
       'contents': contents,
       'type': fileType,
       'updated': Date.now()
+    }
+    req.data = data
+    data = JSON.stringify(req.data)
+    console.log('After the method...' + data)
+    clientSocketList[i].write(data)
+    res.end()
   }
-  req.data = data
-  data = JSON.stringify(req.data)
-  console.log('After the method...' + data)
-  let socket = jsonovertcp.connect(CLIENT_PORT, () => {
-      socket.write(data)
-    })
-  res.end()
   next()
 }
 
@@ -170,3 +171,18 @@ app.post('*', setFileAttributes, setDirDetails, (req, res, next) => {
   }().catch(next)
 
 }, notifyClients)
+
+// Create TCP Server
+
+let tcpServer = jsonovertcp.createServer(TCP_PORT).listen(TCP_PORT)
+console.log(`TCP Server listening @ http://127.0.0.1:${TCP_PORT}`)
+
+tcpServer.on('connection', (socket) => {
+  socket.on('data', (data) => {
+    console.log("TCP Connection from client. Client Id: " + data.clientId + ' .Adding client to listeners')
+    clientSocketList.push(socket)
+    console.log(clientSocketList)
+  })
+})
+
+

@@ -5,11 +5,43 @@ let rimraf = require('rimraf')
 
 let jsonovertcp = require('json-over-tcp')
 
-const PORT = 8099
+const SERVER_TCP_PORT = process.env.SERVER_TCP_PORT || 8001
+const CLIENT_ID = process.env.CLIENT_ID || 10001
+
 const FILE_TYPE_DIR = 'dir'
 const OPERATION_CREATE = 'create'
 const OPERATION_UPDATE = 'update'
 const OPERATION_DELETE = 'delete'
+
+function handleData(data){
+    console.log('Data from server: ' + data)
+    let dataFromServer = JSON.parse(data)
+    console.log('dataFromServer.action: ' + dataFromServer.action)
+    console.log('OPERATION_DELETE: ' + OPERATION_DELETE)
+
+    if(dataFromServer.action === OPERATION_CREATE){
+      handleCreate(dataFromServer)
+    } else if (dataFromServer.action === OPERATION_UPDATE) {
+      handleUpdate(dataFromServer)
+    } else if (dataFromServer.action === OPERATION_DELETE) {
+      handleDelete(dataFromServer)
+    }else {
+      console.log('Unknown operation request from the server. Exiting now!')
+      return
+    }
+}
+
+// Create a connection to the server and register with the server
+async () => {
+  console.log(`Client listening to server at: ${SERVER_TCP_PORT}`)
+  let socket = jsonovertcp.connect(SERVER_TCP_PORT, () => {
+    socket.write({clientId: CLIENT_ID})
+  })
+
+  socket.on('data', (data) => {
+   handleData(data)
+  })
+}()
 
 async function doesFileExist(filePath, processData){
   console.log('Filepath: ' + filePath)
@@ -72,28 +104,4 @@ async function handleDelete(data){
   }
 }
 
-function newConnectionHandler(socket){
-  socket.on('data', (data) => {
-    console.log('Data from server: ' + data)
-    let dataFromServer = JSON.parse(data)
-    console.log('dataFromServer.action: ' + dataFromServer.action)
-    console.log('OPERATION_DELETE: ' + OPERATION_DELETE)
 
-    if(dataFromServer.action === OPERATION_CREATE){
-      handleCreate(dataFromServer)
-    } else if (dataFromServer.action === OPERATION_UPDATE) {
-      handleUpdate(dataFromServer)
-    } else if (dataFromServer.action === OPERATION_DELETE) {
-      handleDelete(dataFromServer)
-    }else {
-      console.log('Unknown operation request from the server. Exiting now!')
-      return
-    }
-  })
-
-}
-
-let server = jsonovertcp.createServer(PORT).listen(PORT)
-
-console.log(`TCP Client listening @ http://127.0.0.1:${PORT}`)
-server.on('connection', newConnectionHandler)
