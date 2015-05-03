@@ -7,6 +7,7 @@ let jsonovertcp = require('json-over-tcp')
 const PORT = 8099
 const FILE_TYPE_DIR = 'dir'
 const OPERATION_CREATE = 'create'
+const OPERATION_UPDATE = 'update'
 
 async function doesFileExist(filePath, processData){
   console.log('Filepath: ' + filePath)
@@ -41,6 +42,18 @@ async function handleCreate(data){
   }
 }
 
+async function handleUpdate(data){
+  let filePath = '/tmp' + data.path
+  if (data.type === FILE_TYPE_DIR) {
+     console.log('File is a directory. Exiting now.')
+     return
+  }
+  // Write the contents to a file
+  await fs.promise.truncate(data.path, 0)
+  await fs.promise.writeFile(filePath, data.contents, 'utf-8')
+  console.log('File updated successfully!!')
+}
+
 function newConnectionHandler(socket){
   socket.on('data', (data) => {
     console.log('Data from server: ' + data)
@@ -48,6 +61,8 @@ function newConnectionHandler(socket){
 
     if(dataFromServer.action === OPERATION_CREATE){
       handleCreate(dataFromServer)
+    } else if (dataFromServer.action === OPERATION_UPDATE) {
+      handleUpdate(dataFromServer)
     } else {
       console.log('Unknown operation request from the server. Exiting now!')
       return

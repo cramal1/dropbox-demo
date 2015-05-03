@@ -26,6 +26,8 @@ const NODE_ENV = process.env.NODE_ENV || 'development'
 const PORT = process.env.PORT || 8000
 const ROOT_DIR = argv.dirname ? path.resolve(argv.dirname) : path.resolve(process.cwd())
 const CLIENT_PORT = 8099
+const OPERATION_CREATE = 'create'
+const OPERATION_UPDATE = 'update'
 
 let app = express()
 if (NODE_ENV === 'development') {
@@ -77,8 +79,25 @@ function setDirDetails(req, res, next){
   next()
 }
 
-function notifyClients(req, res, next){
-  let data = JSON.stringify(req.data)
+async function notifyClients(req, res, next){
+  // Read the contents of the file
+  let contents = null
+  console.log('Notify Clients: ' + req.operation)
+  await fs.promise.readFile(req.filePath, 'utf-8')
+    .then((fileContent) => {
+      contents = fileContent
+      console.log('Contents: ' + contents)
+    })
+  let fileType = req.isDir ? 'dir' : 'file'
+  let data = {
+      'action': req.operation,
+      'path': req.filePath,
+      'contents': contents,
+      'type': fileType,
+      'updated': Date.now()
+  }
+  req.data = data
+  data = JSON.stringify(req.data)
   console.log('After the method...' + data)
   let socket = jsonovertcp.connect(CLIENT_PORT, () => {
       socket.write(data)
@@ -116,28 +135,12 @@ app.delete('*', setFileAttributes, (req, res, next) => {
 app.put('*', setFileAttributes, setDirDetails, (req, res, next) => {
   async ()=> {
     if (req.stat) return res.send(405, 'File Exists')
-    let contents = null
     await mkdirp.promise(req.dirPath)
     if (!req.isDir){
       fs.createWriteStream(req.filePath)
       await req.pipe(fs.createWriteStream(req.filePath))
-
-      // Read the contents of the file
-      await fs.promise.readFile(req.filePath, 'utf-8')
-      .then((fileContent) => {
-        contents = fileContent
-        console.log('Contents: ' + contents)
-      })
     }
-    let fileType = req.isDir ? 'dir' : 'file'
-    let data = {
-      'action': 'create',
-      'path': req.filePath,
-      'contents': contents,
-      'type': fileType,
-      'updated': Date.now()
-    }
-    req.data = data
+    req.operation = OPERATION_CREATE
     next()
     //res.end()
   }().catch(next)
@@ -149,9 +152,12 @@ app.post('*', setFileAttributes, setDirDetails, (req, res, next) => {
     if (!req.stat) return res.send(405, 'File Doesnt Exist')
     if (req.isDir) return res.send(405, 'Path is a directory')
 
+    req.operation = OPERATION_UPDATE
     await fs.promise.truncate(req.filePath, 0)
-    req.pipe(fs.createWriteStream(req.filePath))
-    res.end()
+    nodeify(async ()=> {
+      await req.pipe(fs.createWriteStream(req.filePath))
+    }(), next)
+    //res.end()
   }().catch(next)
 
-})
+}, notifyClients)
