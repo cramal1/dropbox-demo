@@ -1,6 +1,7 @@
 let fs = require('fs')
 let mkdirp = require('mkdirp')
 require('songbird')
+let rimraf = require('rimraf')
 
 let jsonovertcp = require('json-over-tcp')
 
@@ -8,6 +9,7 @@ const PORT = 8099
 const FILE_TYPE_DIR = 'dir'
 const OPERATION_CREATE = 'create'
 const OPERATION_UPDATE = 'update'
+const OPERATION_DELETE = 'delete'
 
 async function doesFileExist(filePath, processData){
   console.log('Filepath: ' + filePath)
@@ -54,16 +56,36 @@ async function handleUpdate(data){
   console.log('File updated successfully!!')
 }
 
+async function handleDelete(data){
+  let filePath = '/tmp' + data.path
+  let processData = {}
+  await doesFileExist(filePath, processData)
+  if(processData.filexists !== true){
+    console.log('File doesnt exist locally. Exiting now')
+    return
+  }
+
+  if(data.type === FILE_TYPE_DIR){
+      await rimraf.promise(filePath)
+  } else {
+    await fs.promise.unlink(filePath)
+  }
+}
+
 function newConnectionHandler(socket){
   socket.on('data', (data) => {
     console.log('Data from server: ' + data)
     let dataFromServer = JSON.parse(data)
+    console.log('dataFromServer.action: ' + dataFromServer.action)
+    console.log('OPERATION_DELETE: ' + OPERATION_DELETE)
 
     if(dataFromServer.action === OPERATION_CREATE){
       handleCreate(dataFromServer)
     } else if (dataFromServer.action === OPERATION_UPDATE) {
       handleUpdate(dataFromServer)
-    } else {
+    } else if (dataFromServer.action === OPERATION_DELETE) {
+      handleDelete(dataFromServer)
+    }else {
       console.log('Unknown operation request from the server. Exiting now!')
       return
     }

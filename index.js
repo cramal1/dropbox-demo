@@ -28,6 +28,7 @@ const ROOT_DIR = argv.dirname ? path.resolve(argv.dirname) : path.resolve(proces
 const CLIENT_PORT = 8099
 const OPERATION_CREATE = 'create'
 const OPERATION_UPDATE = 'update'
+const OPERATION_DELETE = 'delete'
 
 let app = express()
 if (NODE_ENV === 'development') {
@@ -83,11 +84,15 @@ async function notifyClients(req, res, next){
   // Read the contents of the file
   let contents = null
   console.log('Notify Clients: ' + req.operation)
-  await fs.promise.readFile(req.filePath, 'utf-8')
+  // Get the file contents if the operation is PUT/POST
+  if (req.operation!== OPERATION_DELETE) {
+    await fs.promise.readFile(req.filePath, 'utf-8')
     .then((fileContent) => {
       contents = fileContent
       console.log('Contents: ' + contents)
     })
+  }
+
   let fileType = req.isDir ? 'dir' : 'file'
   let data = {
       'action': req.operation,
@@ -123,14 +128,18 @@ app.delete('*', setFileAttributes, (req, res, next) => {
       return res.send(400, 'File not found!!')
     }
 
+  nodeify(async ()=> {
     if(req.stat.isDirectory()){
       await rimraf.promise(req.filePath)
     } else {
       await fs.promise.unlink(req.filePath)
     }
-   res.end()
+    console.log('Test 1 ')
+    req.operation = OPERATION_DELETE
+    }(), next)
+   //res.end()
   }().catch(next)
-})
+}, notifyClients)
 
 app.put('*', setFileAttributes, setDirDetails, (req, res, next) => {
   async ()=> {
