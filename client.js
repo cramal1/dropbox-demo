@@ -2,8 +2,10 @@ let fs = require('fs')
 let mkdirp = require('mkdirp')
 require('songbird')
 let rimraf = require('rimraf')
-
 let jsonovertcp = require('json-over-tcp')
+let path = require('path')
+let argv = require('yargs')
+  .argv
 
 const SERVER_TCP_PORT = process.env.SERVER_TCP_PORT || 8001
 const CLIENT_ID = process.env.CLIENT_ID || 10001
@@ -13,11 +15,12 @@ const OPERATION_CREATE = 'create'
 const OPERATION_UPDATE = 'update'
 const OPERATION_DELETE = 'delete'
 
+const ROOT_DIR = argv.dirname ? path.resolve(argv.dirname) : '/tmp'
+
 function handleData(data){
     console.log('Data from server: ' + data)
     let dataFromServer = JSON.parse(data)
-    console.log('dataFromServer.action: ' + dataFromServer.action)
-    console.log('OPERATION_DELETE: ' + OPERATION_DELETE)
+    console.log('Received ' + dataFromServer.action + ' operation from the server. File path: ' + dataFromServer.path)
 
     if(dataFromServer.action === OPERATION_CREATE){
       handleCreate(dataFromServer)
@@ -34,6 +37,7 @@ function handleData(data){
 // Create a connection to the server and register with the server
 async () => {
   console.log(`Client listening to server at: ${SERVER_TCP_PORT}`)
+  console.log(`Local File System path: ${ROOT_DIR}`)
   let socket = jsonovertcp.connect(SERVER_TCP_PORT, () => {
     socket.write({clientId: CLIENT_ID})
   })
@@ -56,44 +60,45 @@ async function doesFileExist(filePath, processData){
 }
 
 async function handleCreate(data){
-  let filePath = '/tmp' + data.path
+  let filePath = ROOT_DIR + data.path
   let processData = {}
   await doesFileExist(filePath, processData)
 
   if (processData.filexists === true){
-    console.log('File exists. Exiting now.')
+    console.log('File exists. Exiting now. File path: '+ filePath)
     return
   } else {
-    console.log('File doesnt exist. Continuing to create the file')
+    console.log('File doesnt exist. Continuing to create the file: ' + filePath)
   }
 
   // Write the contents to a file
   if (data.type === FILE_TYPE_DIR) {
     await mkdirp.promise(filePath)
   } else {
-     await fs.promise.writeFile(filePath, data.contents, 'utf-8')
-    console.log('File created successfully!!')
+    await mkdirp.promise(path.dirname(filePath))
+    await fs.promise.writeFile(filePath, data.contents, 'utf-8')
+    console.log('File created successfully. File Path: ' + filePath)
   }
 }
 
 async function handleUpdate(data){
-  let filePath = '/tmp' + data.path
+  let filePath = ROOT_DIR + data.path
   if (data.type === FILE_TYPE_DIR) {
-     console.log('File is a directory. Exiting now.')
+     console.log('File is a directory. Exiting now. File Path: ' + filePath)
      return
   }
   // Write the contents to a file
-  await fs.promise.truncate(data.path, 0)
+  await fs.promise.truncate(filePath, 0)
   await fs.promise.writeFile(filePath, data.contents, 'utf-8')
-  console.log('File updated successfully!!')
+  console.log('File updated successfully. File path: ' + filePath)
 }
 
 async function handleDelete(data){
-  let filePath = '/tmp' + data.path
+  let filePath = ROOT_DIR + data.path
   let processData = {}
   await doesFileExist(filePath, processData)
   if(processData.filexists !== true){
-    console.log('File doesnt exist locally. Exiting now')
+    console.log('File doesnt exist locally. Exiting now. File Path: ' + filePath)
     return
   }
 
@@ -102,6 +107,7 @@ async function handleDelete(data){
   } else {
     await fs.promise.unlink(filePath)
   }
+  console.log('File deleted successfully. File Path: ' + filePath)
 }
 
 

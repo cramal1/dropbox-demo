@@ -71,6 +71,7 @@ function setDirDetails(req, res, next){
   let endsWithSlash = req.filePath.charAt(req.filePath.length - 1) === path.sep
   let hasExt = path.extname(req.filePath) !== ''
   req.isDir = endsWithSlash || !hasExt
+  console.log('isDir: '+ req.isDir)
   req.dirPath = req.isDir ? req.filePath : path.dirname(req.filePath)
   console.log('Slash present? ' + req.filePath.charAt(req.filePath.length - 1))
   console.log('path.sep' + path.sep)
@@ -85,9 +86,10 @@ async function notifyClients(req, res, next){
   for (let i = 0; i < clientSocketList.length; i++) {
     // Read the contents of the file
     let contents = null
+    let fileType = req.isDir ? 'dir' : 'file'
     console.log('Notify Clients: ' + req.operation)
     // Get the file contents if the operation is PUT/POST
-    if (req.operation!== OPERATION_DELETE) {
+    if (fileType === 'file' && req.operation !== OPERATION_DELETE) {
       await fs.promise.readFile(req.filePath, 'utf-8')
       .then((fileContent) => {
         contents = fileContent
@@ -95,7 +97,6 @@ async function notifyClients(req, res, next){
       })
     }
 
-    let fileType = req.isDir ? 'dir' : 'file'
     let data = {
       'action': req.operation,
       'path': req.filePath,
@@ -123,7 +124,7 @@ app.get('*', setFileAttributes, sendHeaders, (req, res) => {
 app.head('*', setFileAttributes, sendHeaders, (req, res) => res.end())
 
 
-app.delete('*', setFileAttributes, (req, res, next) => {
+app.delete('*', setFileAttributes, setDirDetails, (req, res, next) => {
   async () => {
     if(!req.stat){
       return res.send(400, 'File not found!!')
@@ -179,9 +180,8 @@ console.log(`TCP Server listening @ http://127.0.0.1:${TCP_PORT}`)
 
 tcpServer.on('connection', (socket) => {
   socket.on('data', (data) => {
-    console.log("TCP Connection from client. Client Id: " + data.clientId + ' .Adding client to listeners')
+    console.log("TCP Connection from client. Client Id:  " + data.clientId + ' .Adding client to listeners')
     clientSocketList.push(socket)
-    console.log(clientSocketList)
   })
 })
 
